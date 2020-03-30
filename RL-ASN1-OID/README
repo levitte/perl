@@ -1,0 +1,29 @@
+RL::ASN1::OID
+
+Quick library to parse OID values and encode them into DER
+
+INSTALLATION
+
+To install this module, run the following commands:
+
+	perl Makefile.PL
+	make
+	make test
+	make install
+
+SUPPORT AND DOCUMENTATION
+
+After installing, you can find documentation for this module with the
+perldoc command.
+
+    perldoc RL::ASN1::OID
+
+
+LICENSE AND COPYRIGHT
+
+This software is Copyright (c) 2020 by Richard levitte.
+
+This is free software, licensed under:
+
+  The Artistic License 2.0 (GPL Compatible)
+
