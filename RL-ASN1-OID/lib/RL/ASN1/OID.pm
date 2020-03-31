@@ -17,7 +17,8 @@ use Carp;
 use Exporter;
 use vars qw($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
 @ISA = qw(Exporter);
-@EXPORT = qw(parse_oid encode_oid register_oid);
+@EXPORT = qw(parse_oid encode_oid register_oid
+             registered_oid_arcs registered_oid_leaves);
 @EXPORT_OK = qw(encode_oid_nums);
 
 use List::Util;
@@ -112,6 +113,14 @@ my $xmlobj_re =
 
 # Recorded OIDs, to support things like '{ pkcs1 1 }'
 # Do note that we don't currently support relative OIDs
+#
+# The key is the identifier.
+#
+# The value is a hash, composed of:
+# type => 'arc' | 'leaf'
+# nums => [ LIST ]
+# Note that the |type| always starts as a 'leaf', and may change to an 'arc'
+# on the fly, as new OIDs are parsed.
 my %name2oid = ();
 
 ########
@@ -144,13 +153,37 @@ sub parse_oid {
     }
 
     croak "Invalid ASN.1 object '$input'" unless @components;
+    die "Internal error when parsing '$input'"
+        unless scalar(@components) % 2 == 0;
 
-    my @numbers = List::Util::pairmap {
+    # As we currently only support a name without number as first
+    # component, the easiest is to have a direct look at it and
+    # hack it.
+    my @first = List::Util::pairmap {
         return $b if $b ne '';
-        return @{$name2oid{$a}} if $a ne '' && defined $name2oid{$a};
+        return @{$name2oid{$a}->{nums}} if $a ne '' && defined $name2oid{$a};
         croak "Undefined identifier $a" if $a ne '';
         croak "Empty OID element (how's that possible?)";
-    } @components;
+    } ( @components[0..1] );
+
+    my @numbers =
+        (
+         @first,
+         List::Util::pairmap {
+             return $b if $b ne '';
+             croak "Unsupported relative OID $a" if $a ne '';
+             croak "Empty OID element (how's that possible?)";
+         } @components[2..$#components]
+        );
+
+    # If the first component has an identifier and there are other
+    # components following it, we change the type of that identifier
+    # to 'arc'.
+    if (scalar @components > 2
+        && $components[0] ne ''
+        && defined $name2oid{$components[0]}) {
+        $name2oid{$components[0]}->{type} = 'arc';
+    }
 
     return @numbers;
 }
@@ -172,7 +205,36 @@ sub encode_oid {
 sub register_oid {
     my $name = shift;
     my @nums = parse_oid @_;
-    $name2oid{$name} = [ @nums ];
+
+    if (defined $name2oid{$name}) {
+        my $str1 = join(',', @nums);
+        my $str2 = join(',', @{$name2oid{$name}->{nums}});
+
+        croak "Invalid redefinition of $name with different value"
+            unless $str1 eq $str2;
+    } else {
+        $name2oid{$name} = { type => 'leaf', nums => [ @nums ] };
+    }
+}
+
+=item registered_oid_arcs()
+
+=item registered_oid_leaves()
+
+=cut
+
+sub _registered_oids {
+    my $type = shift;
+
+    return grep { $name2oid{$_}->{type} eq $type } keys %name2oid;
+}
+
+sub registered_oid_arcs {
+    return _registered_oids( 'arc' );
+}
+
+sub registered_oid_leaves {
+    return _registered_oids( 'leaf' );
 }
 
 =item encode_oid_nums()
